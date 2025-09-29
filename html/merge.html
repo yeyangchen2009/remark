@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件合并工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        accent: '#0ea5e9',
+                        neutral: '#f1f5f9',
+                        'neutral-dark': '#334155',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .shadow-soft {
+                box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+            }
+            .transition-smooth {
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .drop-area-active {
+                @apply border-primary bg-primary/10;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-inter text-neutral-dark min-h-screen flex flex-col">
+    <!-- 导航栏 -->
+    <header class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-file-text-o text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-neutral-dark">文件合并工具</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-100 transition-smooth">
+                    <i class="fa fa-moon-o text-secondary"></i>
+                </button>
+                <button class="hidden md:flex items-center space-x-1 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-sm hover:bg-primary/20 transition-smooth">
+                    <i class="fa fa-question-circle"></i>
+                    <span>帮助</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- 介绍卡片 -->
+            <div class="bg-white rounded-xl shadow-soft p-6 mb-8 transform hover:scale-[1.01] transition-smooth">
+                <h2 class="text-xl font-bold mb-3 flex items-center">
+                    <i class="fa fa-info-circle text-primary mr-2"></i>
+                    关于文件合并工具
+                </h2>
+                <p class="text-gray-600 mb-4">
+                    这是一个简单易用的在线文件合并工具，您可以上传多个文本文件，系统将按上传顺序合并它们，并提供合并后的文件供您下载。
+                </p>
+                <div class="flex flex-wrap gap-3">
+                    <div class="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                        <i class="fa fa-check-circle mr-1"></i> 支持多种文本格式
+                    </div>
+                    <div class="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                        <i class="fa fa-check-circle mr-1"></i> 本地处理，保护隐私
+                    </div>
+                    <div class="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                        <i class="fa fa-check-circle mr-1"></i> 支持拖放上传
+                    </div>
+                    <div class="flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                        <i class="fa fa-check-circle mr-1"></i> 自定义合并选项
+                    </div>
+                </div>
+            </div>
+
+            <!-- 上传区域 -->
+            <div class="bg-white rounded-xl shadow-soft p-6 mb-8">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <i class="fa fa-upload text-primary mr-2"></i>
+                    上传文件
+                </h2>
+                
+                <!-- 拖放区域 -->
+                <div id="drop-area" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center mb-6 cursor-pointer hover:border-primary transition-smooth">
+                    <i class="fa fa-cloud-upload text-4xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-600 mb-2">拖放文件到此处，或</p>
+                    <label class="inline-block bg-primary text-white px-6 py-2 rounded-lg cursor-pointer hover:bg-primary/90 transition-smooth">
+                        <i class="fa fa-plus mr-2"></i>选择文件
+                        <input type="file" id="file-input" class="hidden" multiple>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-3">支持TXT、MD、CSV、JSON等文本格式</p>
+                </div>
+
+                <!-- 选项设置 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label for="file-separator" class="block text-sm font-medium text-gray-700 mb-1">文件分隔符</label>
+                        <select id="file-separator" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-smooth">
+                            <option value="line">空行</option>
+                            <option value="hr" selected>分隔线 (---)</option>
+                            <option value="filename">文件名</option>
+                            <option value="both">文件名+分隔线</option>
+                            <option value="none">无分隔</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="output-format" class="block text-sm font-medium text-gray-700 mb-1">输出格式</label>
+                        <select id="output-format" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-smooth">
+                            <option value="txt" selected>文本文件 (.txt)</option>
+                            <option value="md">Markdown (.md)</option>
+                            <option value="csv">CSV (.csv)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 文件列表 -->
+                <div id="file-list" class="hidden">
+                    <h3 class="font-medium text-gray-700 mb-3">已上传文件 (<span id="file-count">0</span>)</h3>
+                    <div id="files-container" class="space-y-2 max-h-64 overflow-y-auto pr-2"></div>
+                    <div class="flex justify-between mt-4">
+                        <button id="clear-files" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-smooth">
+                            <i class="fa fa-trash-o mr-1"></i>清空文件
+                        </button>
+                        <button id="merge-files" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-smooth disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa fa-file-text-o mr-1"></i>合并文件
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 预览区域 -->
+            <div id="preview-area" class="bg-white rounded-xl shadow-soft p-6 mb-8 hidden">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <i class="fa fa-eye text-primary mr-2"></i>
+                    合并预览
+                </h2>
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-2 flex justify-between items-center border-b border-gray-200">
+                        <div class="text-sm text-gray-600">
+                            <i class="fa fa-file-text-o mr-1"></i>
+                            <span id="preview-filename">merged.txt</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button id="download-btn" class="text-xs px-3 py-1 bg-primary text-white rounded hover:bg-primary/90 transition-smooth">
+                                <i class="fa fa-download mr-1"></i>下载
+                            </button>
+                            <button id="copy-btn" class="text-xs px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition-smooth">
+                                <i class="fa fa-copy mr-1"></i>复制
+                            </button>
+                        </div>
+                    </div>
+                    <div id="preview-content" class="p-4 max-h-96 overflow-y-auto text-sm font-mono"></div>
+                </div>
+            </div>
+
+            <!-- 操作成功提示 -->
+            <div id="success-message" class="fixed bottom-4 right-4 bg-green-50 border border-green-200 rounded-lg p-4 shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3 max-w-sm">
+                <div class="bg-green-100 p-2 rounded-full">
+                    <i class="fa fa-check text-green-500"></i>
+                </div>
+                <div>
+                    <h4 class="font-medium text-green-800">操作成功</h4>
+                    <p id="success-text" class="text-sm text-green-700">文件已复制到剪贴板</p>
+                </div>
+                <button class="text-green-400 hover:text-green-600">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 py-6">
+        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+            <p>© 2025 文件合并工具 | 所有操作在本地完成，确保数据安全</p>
+            <div class="flex justify-center space-x-4 mt-3">
+                <a href="#" class="hover:text-primary transition-smooth">使用说明</a>
+                <a href="#" class="hover:text-primary transition-smooth">隐私政策</a>
+                <a href="#" class="hover:text-primary transition-smooth">联系我们</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 全局变量
+        let files = [];
+        let mergedContent = '';
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const filesContainer = document.getElementById('files-container');
+        const fileCount = document.getElementById('file-count');
+        const clearFilesBtn = document.getElementById('clear-files');
+        const mergeFilesBtn = document.getElementById('merge-files');
+        const previewArea = document.getElementById('preview-area');
+        const previewContent = document.getElementById('preview-content');
+        const previewFilename = document.getElementById('preview-filename');
+        const downloadBtn = document.getElementById('download-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const successMessage = document.getElementById('success-message');
+        const successText = document.getElementById('success-text');
+        const fileSeparator = document.getElementById('file-separator');
+        const outputFormat = document.getElementById('output-format');
+        const themeToggle = document.getElementById('theme-toggle');
+
+        // 初始化
+        function init() {
+            // 拖放事件监听
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight() {
+                dropArea.classList.add('drop-area-active');
+            }
+
+            function unhighlight() {
+                dropArea.classList.remove('drop-area-active');
+            }
+
+            // 处理拖放文件
+            dropArea.addEventListener('drop', handleDrop, false);
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const droppedFiles = [...dt.files];
+                handleFiles(droppedFiles);
+            }
+
+            // 处理文件选择
+            fileInput.addEventListener('change', () => {
+                const selectedFiles = [...fileInput.files];
+                handleFiles(selectedFiles);
+            });
+
+            // 清空文件按钮
+            clearFilesBtn.addEventListener('click', clearFiles);
+
+            // 合并文件按钮
+            mergeFilesBtn.addEventListener('click', mergeFiles);
+
+            // 下载按钮
+            downloadBtn.addEventListener('click', downloadMergedFile);
+
+            // 复制按钮
+            copyBtn.addEventListener('click', copyToClipboard);
+
+            // 分隔符和格式变更事件
+            fileSeparator.addEventListener('change', updatePreviewIfExists);
+            outputFormat.addEventListener('change', updatePreviewIfExists);
+
+            // 主题切换
+            themeToggle.addEventListener('click', toggleTheme);
+        }
+
+        // 处理文件上传
+        function handleFiles(newFiles) {
+            // 过滤掉非文本文件
+            const textFiles = newFiles.filter(file => {
+                const fileType = file.type;
+                return fileType === '' || fileType.startsWith('text/');
+            });
+
+            if (textFiles.length === 0) {
+                showMessage('请上传文本文件（如TXT、MD、CSV等）', 'error');
+                return;
+            }
+
+            // 添加到文件列表
+            files = [...files, ...textFiles];
+            
+            // 显示文件列表
+            updateFileList();
+            
+            // 显示文件列表区域
+            fileList.classList.remove('hidden');
+            
+            // 更新合并按钮状态
+            updateMergeButton();
+            
+            // 显示成功消息
+            showMessage(`已成功添加 ${textFiles.length} 个文件`, 'success');
+        }
+
+        // 更新文件列表
+        function updateFileList() {
+            filesContainer.innerHTML = '';
+            fileCount.textContent = files.length;
+            
+            files.forEach((file, index) => {
+                const fileSize = formatFileSize(file.size);
+                const fileItem = document.createElement('div');
+                fileItem.className = 'bg-gray-50 rounded-lg p-3 flex justify-between items-center hover:bg-gray-100 transition-smooth';
+                fileItem.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-primary/10 text-primary p-2 rounded">
+                            <i class="fa fa-file-text-o"></i>
+                        </div>
+                        <div class="overflow-hidden">
+                            <p class="font-medium text-gray-800 truncate max-w-xs">${file.name}</p>
+                            <p class="text-xs text-gray-500">${fileSize} · ${formatDate(file.lastModified)}</p>
+                        </div>
+                    </div>
+                    <button class="delete-file text-gray-400 hover:text-red-500 transition-smooth" data-index="${index}">
+                        <i class="fa fa-times"></i>
+                    </button>
+                `;
+                filesContainer.appendChild(fileItem);
+            });
+            
+            // 添加删除文件事件
+            document.querySelectorAll('.delete-file').forEach(button => {
+                button.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    removeFile(index);
+                });
+            });
+        }
+
+        // 移除文件
+        function removeFile(index) {
+            files.splice(index, 1);
+            updateFileList();
+            
+            if (files.length === 0) {
+                fileList.classList.add('hidden');
+                previewArea.classList.add('hidden');
+            }
+            
+            updateMergeButton();
+        }
+
+        // 清空所有文件
+        function clearFiles() {
+            files = [];
+            fileList.classList.add('hidden');
+            previewArea.classList.add('hidden');
+        }
+
+        // 更新合并按钮状态
+        function updateMergeButton() {
+            if (files.length >= 2) {
+                mergeFilesBtn.removeAttribute('disabled');
+            } else {
+                mergeFilesBtn.setAttribute('disabled', 'true');
+            }
+        }
+
+        // 合并文件
+        async function mergeFiles() {
+            // 显示加载状态
+            mergeFilesBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>合并中...';
+            mergeFilesBtn.disabled = true;
+            
+            try {
+                mergedContent = await processFiles();
+                
+                // 更新预览
+                updatePreview(mergedContent);
+                
+                // 显示预览区域
+                previewArea.classList.remove('hidden');
+                
+                // 滚动到预览区域
+                previewArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                showMessage('文件合并成功！', 'success');
+            } catch (error) {
+                showMessage('合并文件时出错: ' + error.message, 'error');
+            } finally {
+                // 恢复按钮状态
+                mergeFilesBtn.innerHTML = '<i class="fa fa-file-text-o mr-1"></i>合并文件';
+                mergeFilesBtn.disabled = false;
+            }
+        }
+
+        // 处理文件内容
+        async function processFiles() {
+            let result = '';
+            const separatorOption = fileSeparator.value;
+            const isMarkdown = outputFormat.value === 'md';
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                // 为每个文件添加标题（仅当格式为MD且选择了包含文件名的分隔符时）
+                if (isMarkdown && (separatorOption === 'filename' || separatorOption === 'both')) {
+                    // 为第一个文件添加标题
+                    result += `### 文件: ${file.name}\n\n`;
+                    
+                    // 如果选择了"both"，还需要添加分隔线
+                    if (separatorOption === 'both') {
+                        result += '---\n\n';
+                    }
+                } else if (i > 0) {
+                    // 非第一个文件且不是Markdown格式，或者不需要文件名标题时，添加普通分隔符
+                    switch (separatorOption) {
+                        case 'line':
+                            result += '\n\n';
+                            break;
+                        case 'hr':
+                            result += '\n\n---\n\n';
+                            break;
+                        case 'filename':
+                            result += `\n\n### 文件: ${file.name}\n\n`;
+                            break;
+                        case 'both':
+                            result += `\n\n### 文件: ${file.name}\n\n---\n\n`;
+                            break;
+                        case 'none':
+                        default:
+                            // 不添加分隔符
+                            break;
+                    }
+                }
+                
+                // 读取文件内容
+                const content = await readFileAsync(file);
+                result += content;
+            }
+            
+            return result;
+        }
+
+        // 异步读取文件
+        function readFileAsync(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (event) => {
+                    resolve(event.target.result);
+                };
+                
+                reader.onerror = () => {
+                    reject(new Error('读取文件失败'));
+                };
+                
+                reader.readAsText(file);
+            });
+        }
+
+        // 更新预览
+        function updatePreview(content) {
+            previewContent.textContent = content;
+            
+            // 更新文件名
+            const format = outputFormat.value;
+            previewFilename.textContent = `merged.${format}`;
+        }
+
+        // 如果预览已存在则更新
+        function updatePreviewIfExists() {
+            if (!previewArea.classList.contains('hidden') && mergedContent) {
+                mergeFiles();
+            }
+        }
+
+        // 下载合并后的文件
+        function downloadMergedFile() {
+            const format = outputFormat.value;
+            const blob = new Blob([mergedContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            a.href = url;
+            a.download = `merged.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+            
+            showMessage('文件已开始下载！', 'success');
+        }
+
+        // 复制到剪贴板
+        async function copyToClipboard() {
+            try {
+                await navigator.clipboard.writeText(mergedContent);
+                showMessage('内容已复制到剪贴板！', 'success');
+            } catch (error) {
+                showMessage('复制失败，请手动复制', 'error');
+            }
+        }
+
+        // 显示消息
+        function showMessage(text, type = 'success') {
+            successText.textContent = text;
+            
+            if (type === 'error') {
+                successMessage.classList.remove('bg-green-50', 'border-green-200');
+                successMessage.classList.add('bg-red-50', 'border-red-200');
+                
+                successMessage.querySelector('i').classList.remove('fa-check', 'text-green-500');
+                successMessage.querySelector('i').classList.add('fa-exclamation-circle', 'text-red-500');
+                
+                successMessage.querySelector('h4').classList.remove('text-green-800');
+                successMessage.querySelector('h4').classList.add('text-red-800');
+                
+                successMessage.querySelector('p').classList.remove('text-green-700');
+                successMessage.querySelector('p').classList.add('text-red-700');
+            } else {
+                successMessage.classList.remove('bg-red-50', 'border-red-200');
+                successMessage.classList.add('bg-green-50', 'border-green-200');
+                
+                successMessage.querySelector('i').classList.remove('fa-exclamation-circle', 'text-red-500');
+                successMessage.querySelector('i').classList.add('fa-check', 'text-green-500');
+                
+                successMessage.querySelector('h4').classList.remove('text-red-800');
+                successMessage.querySelector('h4').classList.add('text-green-800');
+                
+                successMessage.querySelector('p').classList.remove('text-red-700');
+                successMessage.querySelector('p').classList.add('text-green-700');
+            }
+            
+            // 显示消息
+            successMessage.classList.remove('translate-y-20', 'opacity-0');
+            
+            // 3秒后隐藏
+            setTimeout(() => {
+                successMessage.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // 切换主题
+        function toggleTheme() {
+            document.body.classList.toggle('dark');
+            const isDark = document.body.classList.contains('dark');
+            
+            if (isDark) {
+                document.body.classList.add('bg-gray-900', 'text-white');
+                document.body.classList.remove('bg-gray-50', 'text-neutral-dark');
+                
+                // 更新所有卡片
+                document.querySelectorAll('.bg-white').forEach(el => {
+                    el.classList.remove('bg-white');
+                    el.classList.add('bg-gray-800');
+                });
+                
+                // 更新主题图标
+                themeToggle.querySelector('i').classList.remove('fa-moon-o');
+                themeToggle.querySelector('i').classList.add('fa-sun-o');
+            } else {
+                document.body.classList.remove('bg-gray-900', 'text-white');
+                document.body.classList.add('bg-gray-50', 'text-neutral-dark');
+                
+                // 更新所有卡片
+                document.querySelectorAll('.bg-gray-800').forEach(el => {
+                    el.classList.remove('bg-gray-800');
+                    el.classList.add('bg-white');
+                });
+                
+                // 更新主题图标
+                themeToggle.querySelector('i').classList.remove('fa-sun-o');
+                themeToggle.querySelector('i').classList.add('fa-moon-o');
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 格式化日期
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

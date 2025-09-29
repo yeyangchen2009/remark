@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B站字幕转文字稿工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FB7299', // B站粉色
+                        secondary: '#23ADE5',
+                        dark: '#18191C',
+                        light: '#F5F5F7'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['Consolas', 'Monaco', 'monospace']
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .transition-custom {
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .drag-over {
+                border-color: theme('colors.primary');
+                background-color: theme('colors.primary/5');
+            }
+            .file-item {
+                @apply flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg mb-2 transition-custom;
+            }
+            .file-item:hover {
+                @apply border-primary bg-primary/5;
+            }
+            .file-handle {
+                @apply cursor-move text-gray-400 hover:text-primary transition-custom mr-3;
+            }
+            .nav-item {
+                @apply py-2 px-3 rounded hover:bg-primary/10 cursor-pointer transition-custom text-gray-800 hover:text-primary text-sm md:text-base;
+            }
+            .nav-item.active {
+                @apply bg-primary/10 text-primary font-medium;
+            }
+            .scrollbar-thin {
+                scrollbar-width: thin;
+            }
+            .scrollbar-thin::-webkit-scrollbar {
+                width: 6px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb {
+                background-color: rgba(156, 163, 175, 0.5);
+                border-radius: 3px;
+            }
+            .markdown-content h2 {
+                @apply text-2xl font-bold text-dark mt-6 mb-4;
+            }
+            .markdown-content blockquote {
+                @apply border-l-4 border-primary pl-4 py-1 text-gray-600 italic my-4;
+            }
+            .markdown-content hr {
+                @apply border-gray-200 my-8;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-light to-gray-100 min-h-screen font-sans text-dark overflow-x-hidden">
+    <!-- 页面容器 -->
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- 标题区域 -->
+        <header class="text-center mb-12 mt-6">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+                <i class="fa fa-file-text-o text-2xl"></i>
+            </div>
+            <h1 class="text-[clamp(2rem,5vw,3rem)] font-bold text-dark mb-3 text-shadow">
+                B站字幕转文字稿工具
+            </h1>
+            <p class="text-gray-600 max-w-2xl mx-auto">
+                上传B站下载的ASS字幕文件，自动提取并整理成清晰的文字稿，支持多文件上传与排序
+            </p>
+        </header>
+        
+        <!-- 主要内容区 -->
+        <main class="space-y-10">
+            <!-- 上传区域 -->
+            <section class="bg-white rounded-xl shadow-lg p-6 md:p-8 transform hover:shadow-xl transition-custom">
+                <div class="flex flex-col md:flex-row gap-8">
+                    <div class="w-full md:w-1/2">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center">
+                            <i class="fa fa-upload text-primary mr-2"></i>上传字幕文件
+                        </h2>
+                        <p class="text-gray-600 mb-6">
+                            可上传多个ASS格式字幕文件，支持拖放排序，完成后点击"开始处理"按钮
+                        </p>
+                        
+                        <!-- 上传区域 -->
+                        <div id="dropArea" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary transition-custom cursor-pointer mb-6">
+                            <i class="fa fa-file-video-o text-4xl text-gray-400 mb-4"></i>
+                            <p class="text-gray-500 mb-2">拖放ASS字幕文件到此处，或</p>
+                            <button id="browseButton" class="inline-block bg-primary text-white py-2 px-6 rounded-full hover:bg-primary/90 transition-custom font-medium cursor-pointer">
+                                选择文件
+                            </button>
+                            <input type="file" id="fileInput" accept=".ass" class="hidden" multiple>
+                            <p class="text-xs text-gray-400 mt-4">支持的格式：.ass（可多选）</p>
+                        </div>
+                        
+                        <!-- 已上传文件列表 -->
+                        <div id="fileListContainer" class="hidden">
+                            <h3 class="text-lg font-medium mb-3 flex items-center">
+                                <i class="fa fa-files-o text-primary mr-2"></i>已上传文件
+                                <span class="text-sm font-normal text-gray-500 ml-2">(可拖动调整顺序)</span>
+                            </h3>
+                            <div id="fileList" class="min-h-[100px] mb-4"></div>
+                            <button id="processButton" class="bg-secondary text-white py-2 px-6 rounded-full hover:bg-secondary/90 transition-custom font-medium">
+                                <i class="fa fa-cog mr-2"></i>开始处理
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full md:w-1/2 flex flex-col items-center justify-center">
+                        <div class="w-48 h-48 bg-primary/5 rounded-full flex items-center justify-center mb-4">
+                            <i class="fa fa-magic text-6xl text-primary/70"></i>
+                        </div>
+                        <h3 class="text-lg font-medium mb-2 text-center">自动处理流程</h3>
+                        <ul class="text-gray-600 text-sm space-y-2 max-w-xs">
+                            <li class="flex items-start">
+                                <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                                <span>上传多个ASS字幕文件</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                                <span>拖动调整文件处理顺序</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                                <span>提取内容并去除格式信息</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fa fa-check-circle text-secondary mt-1 mr-2"></i>
+                                <span>下载合并版或单独文件包</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 结果展示区域 -->
+            <section id="resultSection" class="hidden bg-white rounded-xl shadow-lg p-6 md:p-8">
+                <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+                    <h2 class="text-xl font-semibold flex items-center">
+                        <i class="fa fa-file-text text-primary mr-2"></i>提取结果
+                    </h2>
+                    <div class="flex gap-3">
+                        <button id="copyButton" class="bg-secondary text-white py-2 px-4 rounded-lg hover:bg-secondary/90 transition-custom flex items-center">
+                            <i class="fa fa-copy mr-2"></i>复制文字稿
+                        </button>
+                        <button id="downloadCombinedButton" class="bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary/90 transition-custom flex items-center">
+                            <i class="fa fa-download mr-2"></i>下载合并版
+                        </button>
+                        <button id="downloadAllButton" class="bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-custom flex items-center">
+                            <i class="fa fa-download mr-2"></i>下载全部文件
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col md:flex-row gap-6">
+                    <!-- 左侧导航 -->
+                    <div class="w-full md:w-64 lg:w-72 shrink-0">
+                        <div class="border border-gray-200 rounded-lg p-4 bg-gray-50 h-full sticky top-4">
+                            <h3 class="font-medium mb-3 pb-2 border-b border-gray-200">文件导航</h3>
+                            <div id="toc" class="space-y-1 max-h-[calc(100vh-240px)] overflow-y-auto scrollbar-thin">
+                                <!-- 导航项将在这里生成 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧内容 -->
+                    <div class="flex-1">
+                        <div id="resultContainer" class="border border-gray-200 rounded-lg p-6 bg-gray-50 min-h-[300px] font-sans text-base overflow-x-auto markdown-content">
+                            <!-- 处理后的内容将显示在这里 -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <!-- 页脚 -->
+        <footer class="mt-16 text-center text-gray-500 text-sm">
+            <p>© 2023 B站字幕转文字稿工具 | 支持多文件处理与自定义排序</p>
+        </footer>
+    </div>
+    
+    <!-- 通知提示 -->
+    <div id="notification" class="fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-custom flex items-center z-50">
+        <i id="notificationIcon" class="mr-2"></i>
+        <span id="notificationText"></span>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        const browseButton = document.getElementById('browseButton');
+        const fileListContainer = document.getElementById('fileListContainer');
+        const fileList = document.getElementById('fileList');
+        const processButton = document.getElementById('processButton');
+        const resultSection = document.getElementById('resultSection');
+        const resultContainer = document.getElementById('resultContainer');
+        const toc = document.getElementById('toc');
+        const copyButton = document.getElementById('copyButton');
+        const downloadCombinedButton = document.getElementById('downloadCombinedButton');
+        const downloadAllButton = document.getElementById('downloadAllButton');
+        const notification = document.getElementById('notification');
+        const notificationIcon = document.getElementById('notificationIcon');
+        const notificationText = document.getElementById('notificationText');
+        
+        // 存储文件信息和处理后的内容
+        let fileItems = [];
+        let processedContent = [];
+        let combinedText = '';
+        let combinedHtml = '';
+        let extractionTime = ''; // 提取时间
+        
+        // 拖拽排序相关变量
+        let draggedItem = null;
+        
+        // 处理文件拖放
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.add('drag-over');
+            }, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.remove('drag-over');
+            }, false);
+        });
+        
+        // 文件列表项拖拽排序事件
+        fileList.addEventListener('dragstart', (e) => {
+            draggedItem = e.target.closest('.file-item');
+            setTimeout(() => {
+                draggedItem.classList.add('opacity-50');
+            }, 0);
+        });
+        
+        fileList.addEventListener('dragend', (e) => {
+            draggedItem.classList.remove('opacity-50');
+            draggedItem = null;
+            
+            // 更新文件顺序数据
+            updateFileOrder();
+        });
+        
+        fileList.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(fileList, e.clientY);
+            if (draggedItem && afterElement == null) {
+                fileList.appendChild(draggedItem);
+            } else if (draggedItem && afterElement) {
+                fileList.insertBefore(draggedItem, afterElement);
+            }
+        });
+        
+        // 确定拖拽后元素的位置
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.file-item:not(.opacity-50)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+        
+        // 更新文件顺序数据
+        function updateFileOrder() {
+            const items = fileList.querySelectorAll('.file-item');
+            const newOrder = [];
+            
+            items.forEach(item => {
+                const fileId = item.dataset.fileId;
+                const fileItem = fileItems.find(f => f.id === fileId);
+                if (fileItem) {
+                    newOrder.push(fileItem);
+                }
+            });
+            
+            fileItems = newOrder;
+        }
+        
+        // 处理文件上传触发
+        browseButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        dropArea.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFiles, false);
+        
+        // 阻止点击dropArea时触发文件选择，只通过专门的按钮触发
+        dropArea.addEventListener('click', (e) => {
+            if (e.target === dropArea) {
+                e.preventDefault();
+            }
+        });
+        
+        // 处理拖放文件
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFileList(files);
+        }
+        
+        // 处理选择的文件
+        function handleFiles(e) {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                handleFileList(files);
+                // 重置文件输入，允许再次选择相同文件
+                fileInput.value = '';
+            }
+        }
+        
+        // 处理文件列表
+        function handleFileList(files) {
+            // 过滤出ASS文件
+            const assFiles = Array.from(files).filter(file => file.name.endsWith('.ass'));
+            
+            if (assFiles.length === 0) {
+                showNotification('error', '请上传ASS格式的字幕文件！');
+                return;
+            }
+            
+            // 添加新文件并避免重复
+            assFiles.forEach(file => {
+                // 检查是否已存在相同名称的文件
+                const isDuplicate = fileItems.some(item => item.name === file.name);
+                if (!isDuplicate) {
+                    const fileId = 'file-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    fileItems.push({
+                        id: fileId,
+                        name: file.name,
+                        file: file,
+                        content: null
+                    });
+                    addFileToDOM(fileId, file.name);
+                }
+            });
+            
+            // 显示文件列表区域
+            fileListContainer.classList.remove('hidden');
+            showNotification('success', `已添加 ${assFiles.length} 个文件`);
+        }
+        
+        // 添加文件到DOM
+        function addFileToDOM(fileId, fileName) {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.draggable = true;
+            fileItem.dataset.fileId = fileId;
+            
+            fileItem.innerHTML = `
+                <i class="fa fa-bars file-handle"></i>
+                <span class="flex-grow truncate" title="${fileName}">${fileName}</span>
+                <button class="text-gray-400 hover:text-red-500 transition-custom delete-file" data-file-id="${fileId}">
+                    <i class="fa fa-times"></i>
+                </button>
+            `;
+            
+            fileList.appendChild(fileItem);
+            
+            // 添加删除事件
+            fileItem.querySelector('.delete-file').addEventListener('click', (e) => {
+                const id = e.target.closest('.delete-file').dataset.fileId;
+                removeFile(id);
+            });
+        }
+        
+        // 移除文件
+        function removeFile(fileId) {
+            // 从数据中移除
+            fileItems = fileItems.filter(item => item.id !== fileId);
+            
+            // 从DOM中移除
+            const element = document.querySelector(`.file-item[data-file-id="${fileId}"]`);
+            if (element) {
+                element.remove();
+            }
+            
+            // 如果没有文件了，隐藏文件列表区域
+            if (fileItems.length === 0) {
+                fileListContainer.classList.add('hidden');
+            }
+            
+            showNotification('info', '文件已移除');
+        }
+        
+        // 处理所有文件
+        processButton.addEventListener('click', () => {
+            if (fileItems.length === 0) {
+                showNotification('error', '请先添加文件');
+                return;
+            }
+            
+            // 记录提取时间
+            const now = new Date();
+            extractionTime = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }).replace(',', '');
+            
+            // 重置之前的处理结果
+            processedContent = [];
+            combinedText = '';
+            combinedHtml = '';
+            resultContainer.innerHTML = '';
+            toc.innerHTML = '';
+            
+            // 逐个处理文件
+            processNextFile(0);
+        });
+        
+        // 递归处理文件
+        function processNextFile(index) {
+            if (index >= fileItems.length) {
+                // 所有文件处理完成，显示结果
+                displayResults();
+                return;
+            }
+            
+            const fileItem = fileItems[index];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                const processed = processSubtitle(content, fileItem.name);
+                
+                // 保存处理结果
+                fileItems[index].content = processed;
+                processedContent.push(processed);
+                
+                // 继续处理下一个文件
+                processNextFile(index + 1);
+            };
+            
+            reader.readAsText(fileItem.file, 'utf-8');
+        }
+        
+        // 处理单个字幕内容
+        function processSubtitle(content, fileName) {
+            // 提取标题
+            let titleMatch = content.match(/Title:\s*(.+)/);
+            let title = titleMatch ? titleMatch[1] : fileName.replace('.ass', '');
+            
+            // 提取所有对话内容
+            const dialogueRegex = /Dialogue:.*?,(?=[^,]*$)(.*?)$/gm;
+            let dialogues = [];
+            let match;
+            
+            while ((match = dialogueRegex.exec(content)) !== null) {
+                // 提取对话文本并去除可能的格式标记
+                let text = match[1]
+                    .replace(/\{.*?\}/g, '')  // 去除花括号内的格式信息
+                    .replace(/<.*?>/g, '')   // 去除尖括号内的格式信息
+                    .trim();                 // 去除前后空格
+                
+                if (text) {
+                    dialogues.push(text);
+                }
+            }
+            
+            // 生成唯一ID用于导航定位
+            const id = 'section-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+            
+            // 组合成Markdown格式，添加提取时间
+            const fullText = `## ${title}\n\n> 提取时间：${extractionTime}\n\n${dialogues.join('，')}\n\n`;
+            
+            // 组合成HTML格式用于显示
+            const fullHtml = `
+                <div id="${id}" class="section-content">
+                    <h2>${title}</h2>
+                    <blockquote>提取时间：${extractionTime}</blockquote>
+                    <p>${dialogues.join('，')}</p>
+                </div>
+            `;
+            
+            return {
+                id: id,
+                title: title,
+                text: dialogues.join('，'),
+                fullText: fullText,
+                fullHtml: fullHtml
+            };
+        }
+        
+        // 显示处理结果
+        function displayResults() {
+            // 构建合并文本和HTML
+            processedContent.forEach((item, index) => {
+                combinedText += item.fullText;
+                if (index < processedContent.length - 1) {
+                    combinedText += "\n---\n\n";
+                }
+                
+                combinedHtml += item.fullHtml;
+                if (index < processedContent.length - 1) {
+                    combinedHtml += "<hr>";
+                }
+            });
+            
+            // 显示渲染后的内容
+            resultContainer.innerHTML = combinedHtml;
+            
+            // 生成导航目录
+            generateTOC();
+            
+            // 显示结果区域
+            resultSection.classList.remove('hidden');
+            
+            // 平滑滚动到结果区域
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+            
+            showNotification('success', `所有文件处理完成，共 ${processedContent.length} 个`);
+        }
+        
+        // 生成导航目录
+        function generateTOC() {
+            processedContent.forEach((item, index) => {
+                const navItem = document.createElement('div');
+                navItem.className = `nav-item ${index === 0 ? 'active' : ''}`;
+                navItem.dataset.target = item.id;
+                navItem.textContent = item.title;
+                
+                // 添加点击事件用于定位
+                navItem.addEventListener('click', () => {
+                    // 找到对应的内容区域
+                    const targetElement = document.getElementById(item.id);
+                    if (targetElement) {
+                        // 平滑滚动到目标位置
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        
+                        // 更新活跃状态
+                        document.querySelectorAll('.nav-item').forEach(el => {
+                            el.classList.remove('active');
+                        });
+                        navItem.classList.add('active');
+                    }
+                });
+                
+                toc.appendChild(navItem);
+            });
+        }
+        
+        // 复制到剪贴板 - 改进版，解决复制失败问题
+        copyButton.addEventListener('click', () => {
+            // 方法1：使用clipboard API
+            navigator.clipboard.writeText(combinedText).then(() => {
+                showNotification('success', '合并文字稿已复制到剪贴板！');
+            }).catch(err => {
+                console.warn('Clipboard API 失败，尝试备用方法:', err);
+                // 方法2：使用textarea fallback
+                const textarea = document.createElement('textarea');
+                textarea.value = combinedText;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                textarea.setSelectionRange(0, 99999); // 移动设备兼容
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        showNotification('success', '合并文字稿已复制到剪贴板！');
+                    } else {
+                        throw new Error('复制命令执行失败');
+                    }
+                } catch (err2) {
+                    showNotification('error', '复制失败，请手动复制！');
+                    console.error('复制失败: ', err2);
+                } finally {
+                    document.body.removeChild(textarea);
+                }
+            });
+        });
+        
+        // 下载合并版
+        downloadCombinedButton.addEventListener('click', () => {
+            // 生成合并文件名，使用第一个文件的名称或默认名称
+            let baseName = '合并文字稿';
+            if (fileItems.length > 0) {
+                baseName = fileItems[0].name.replace('.ass', '-合并');
+            }
+            
+            const blob = new Blob([combinedText], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${baseName}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showNotification('success', '合并版文字稿下载成功！');
+        });
+        
+        // 下载所有单独文件（ZIP包）
+        downloadAllButton.addEventListener('click', () => {
+            const zip = new JSZip();
+            
+            // 为每个处理后的文件创建一个MD文件
+            processedContent.forEach((item, index) => {
+                const originalName = fileItems[index].name;
+                const fileName = originalName.replace('.ass', '.md');
+                zip.file(fileName, item.fullText);
+            });
+            
+            // 生成ZIP文件并下载
+            zip.generateAsync({ type: 'blob' })
+                .then(function(content) {
+                    const url = URL.createObjectURL(content);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '字幕文字稿集合.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    showNotification('success', '所有文字稿已打包下载！');
+                })
+                .catch(function(err) {
+                    showNotification('error', '打包下载失败！');
+                    console.error('ZIP生成失败: ', err);
+                });
+        });
+        
+        // 显示通知
+        function showNotification(type, message) {
+            if (type === 'success') {
+                notification.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg bg-green-500 text-white transform translate-y-0 opacity-100 transition-custom flex items-center z-50';
+                notificationIcon.className = 'fa fa-check-circle mr-2';
+            } else if (type === 'error') {
+                notification.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg bg-red-500 text-white transform translate-y-0 opacity-100 transition-custom flex items-center z-50';
+                notificationIcon.className = 'fa fa-exclamation-circle mr-2';
+            } else if (type === 'info') {
+                notification.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg bg-blue-500 text-white transform translate-y-0 opacity-100 transition-custom flex items-center z-50';
+                notificationIcon.className = 'fa fa-info-circle mr-2';
+            }
+            
+            notificationText.textContent = message;
+            
+            // 3秒后隐藏通知
+            setTimeout(() => {
+                notification.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-custom flex items-center z-50';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
+    
