@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown 文档拆分工具</title>
+  <!-- 引入外部资源 - 使用稳定CDN -->
+  <script src="https://cdn.tailwindcss.com?v=3.3.2"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#10B981',
+            neutral: '#64748B',
+            dark: '#1E293B',
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .transition-height {
+        transition: max-height 0.3s ease-in-out;
+      }
+      .shadow-soft {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+    }
+  </style>
+  
+  <!-- 基础样式兼容 -->
+  <style>
+    /* 确保在不支持Tailwind的环境下也能基本显示 */
+    .fallback-border {
+      border: 1px solid #e5e7eb;
+    }
+    .fallback-rounded {
+      border-radius: 0.5rem;
+    }
+    .fallback-p-4 {
+      padding: 1rem;
+    }
+  </style>
+</head>
+
+<body class="font-inter bg-gray-50 text-dark min-h-screen flex flex-col">
+  <!-- 顶部导航栏 -->
+  <header class="bg-white shadow-sm sticky top-0 z-50 transition-all duration-300">
+    <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-file-text-o text-primary text-2xl"></i>
+        <h1 class="text-xl font-bold text-primary">Markdown 拆分工具</h1>
+      </div>
+      <div class="hidden md:flex items-center space-x-6">
+        <a href="#" class="text-neutral hover:text-primary transition-colors">使用指南</a>
+        <a href="#" class="text-neutral hover:text-primary transition-colors">关于</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要内容区 -->
+  <main class="flex-grow container mx-auto px-4 py-8">
+    <!-- 上传区域 -->
+    <section class="mb-10">
+      <div class="bg-white rounded-xl shadow-soft p-6 md:p-8 fallback-border fallback-rounded fallback-p-4">
+        <h2 class="text-xl font-semibold mb-4 flex items-center">
+          <i class="fa fa-upload text-primary mr-2"></i>上传 Markdown 文档
+        </h2>
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary transition-colors cursor-pointer" id="dropArea">
+          <input type="file" id="fileInput" class="hidden" accept=".md">
+          <i class="fa fa-file-code-o text-5xl text-gray-400 mb-4"></i>
+          <p class="text-gray-600 mb-2">拖放 Markdown 文件到此处，或</p>
+          <button id="browseBtn" class="bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-colors">
+            浏览文件
+          </button>
+          <p class="text-xs text-gray-500 mt-4">支持 .md 格式文件</p>
+        </div>
+        
+        <!-- 层级选择区域 -->
+        <div id="levelSelector" class="mt-6 hidden">
+          <label for="headingLevel" class="block text-gray-700 mb-2">选择拆分的标题层级：</label>
+          <div class="flex items-center flex-wrap gap-4">
+            <select id="headingLevel" class="border border-gray-300 rounded-lg px-4 py-2 w-40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+              <option value="1"># 一级标题</option>
+              <option value="2" selected>## 二级标题</option>
+              <option value="3">### 三级标题</option>
+              <option value="4">#### 四级标题</option>
+              <option value="5">##### 五级标题</option>
+              <option value="6">###### 六级标题</option>
+            </select>
+            <button id="splitBtn" class="bg-secondary hover:bg-secondary/90 text-white py-2 px-6 rounded-lg transition-colors flex items-center">
+              <i class="fa fa-scissors mr-2"></i>拆分文档
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 预览和下载区域 -->
+    <section id="resultSection" class="mb-10 hidden">
+      <div class="bg-white rounded-xl shadow-soft p-6 md:p-8 fallback-border fallback-rounded fallback-p-4">
+        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+          <h2 class="text-xl font-semibold flex items-center">
+            <i class="fa fa-eye text-primary mr-2"></i>拆分结果预览
+          </h2>
+          <button id="downloadZipBtn" class="bg-primary hover:bg-primary/90 text-white py-2 px-6 rounded-lg transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <i class="fa fa-download mr-2"></i>下载 ZIP
+          </button>
+        </div>
+        
+        <!-- 拆分文件列表 -->
+        <div id="fileList" class="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+          <!-- 拆分后的文件将在这里动态生成 -->
+        </div>
+      </div>
+    </section>
+    
+    <!-- 帮助提示 -->
+    <section class="bg-blue-50 rounded-xl p-6 border border-blue-100 fallback-border fallback-rounded fallback-p-4">
+      <h3 class="text-lg font-medium text-blue-800 mb-3 flex items-center">
+        <i class="fa fa-info-circle mr-2"></i>使用说明
+      </h3>
+      <ul class="list-disc pl-5 text-blue-700 space-y-2 text-sm">
+        <li>上传 Markdown (.md) 格式的文档</li>
+        <li>选择要拆分的标题层级（# 符号的数量）</li>
+        <li>系统将按照所选层级拆分文档，代码块（```包裹的内容）中的标题不会被拆分</li>
+        <li>拆分完成后可以预览每个文件的内容</li>
+        <li>点击"下载 ZIP"按钮获取所有拆分后的文件</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-dark text-white py-6 mt-10">
+    <div class="container mx-auto px-4 text-center text-sm">
+      <p>© 2023 Markdown 文档拆分工具 | 所有操作均在本地完成，您的文件不会上传到服务器</p>
+    </div>
+  </footer>
+
+  <script>
+    // 确保DOM加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+      // 全局变量
+      let originalFileName = '';
+      let markdownContent = '';
+      let splitFiles = [];
+      
+      // DOM 元素
+      const dropArea = document.getElementById('dropArea');
+      const fileInput = document.getElementById('fileInput');
+      const browseBtn = document.getElementById('browseBtn');
+      const levelSelector = document.getElementById('levelSelector');
+      const headingLevel = document.getElementById('headingLevel');
+      const splitBtn = document.getElementById('splitBtn');
+      const resultSection = document.getElementById('resultSection');
+      const fileList = document.getElementById('fileList');
+      const downloadZipBtn = document.getElementById('downloadZipBtn');
+      
+      // 事件监听：点击浏览文件
+      if (browseBtn && fileInput) {
+        browseBtn.addEventListener('click', () => {
+          if (fileInput) fileInput.click();
+        });
+      }
+      
+      // 事件监听：文件选择
+      if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
+          }
+        });
+      }
+      
+      // 事件监听：拖放文件
+      if (dropArea) {
+        dropArea.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dropArea.classList.add('border-primary', 'bg-blue-50');
+        });
+        
+        dropArea.addEventListener('dragleave', () => {
+          dropArea.classList.remove('border-primary', 'bg-blue-50');
+        });
+        
+        dropArea.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropArea.classList.remove('border-primary', 'bg-blue-50');
+          
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFile(e.dataTransfer.files[0]);
+          }
+        });
+      }
+      
+      // 处理上传的文件
+      function handleFile(file) {
+        // 简单验证文件类型
+        if (!file.name.endsWith('.md')) {
+          alert('请上传 .md 格式的 Markdown 文件');
+          return;
+        }
+        
+        originalFileName = file.name.replace(/\.md$/, '');
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          markdownContent = e.target.result || '';
+          if (levelSelector) levelSelector.classList.remove('hidden');
+          showNotification('文件上传成功，请选择拆分层级', 'success');
+        };
+        reader.onerror = () => {
+          showNotification('文件读取失败，请重试', 'error');
+        };
+        reader.readAsText(file);
+      }
+      
+      // 事件监听：拆分文档
+      if (splitBtn) {
+        splitBtn.addEventListener('click', () => {
+          if (!markdownContent) return;
+          
+          const level = headingLevel ? parseInt(headingLevel.value, 10) : 1;
+          if (isNaN(level) || level < 1 || level > 6) {
+            showNotification('请选择有效的标题层级', 'error');
+            return;
+          }
+          
+          splitFiles = splitMarkdownByHeading(markdownContent, level);
+          
+          if (splitFiles.length === 0) {
+            showNotification('未找到符合条件的标题进行拆分', 'error');
+            return;
+          }
+          
+          displaySplitFiles();
+          if (resultSection) resultSection.classList.remove('hidden');
+          if (downloadZipBtn) downloadZipBtn.disabled = false;
+          showNotification(`成功拆分为 ${splitFiles.length} 个文件`, 'success');
+          
+          // 滚动到结果区域
+          if (resultSection) {
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+          }
+        });
+      }
+      
+      // 按标题层级拆分 Markdown 文档（忽略代码块中的标题）
+      function splitMarkdownByHeading(content, level) {
+        const files = [];
+        const headingSymbol = '#'.repeat(level);
+        let currentFileContent = '';
+        let currentFileName = '';
+        let inCodeBlock = false;
+        
+        // 按行分割内容
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+          // 检查是否在代码块中
+          if (line.trim().startsWith('```')) {
+            inCodeBlock = !inCodeBlock;
+          }
+          
+          // 不是代码块且是指定层级的标题
+          if (!inCodeBlock && line.trim().startsWith(headingSymbol) && 
+              (line.length === headingSymbol.length || line.charAt(headingSymbol.length) === ' ')) {
+            
+            // 如果已有内容，保存当前文件
+            if (currentFileName) {
+              files.push({
+                name: currentFileName,
+                content: currentFileContent.trim()
+              });
+            }
+            
+            // 提取新标题作为文件名（去除 # 和空格）
+            currentFileName = line.replace(headingSymbol, '').trim()
+              .replace(/[\/:*?"<>|]/g, '-') + '.md'; // 替换非法文件名字符
+            currentFileContent = line + '\n';
+          } else {
+            // 不是标题行，添加到当前文件内容
+            if (currentFileName) {
+              currentFileContent += line + '\n';
+            } else {
+              // 处理标题前的内容
+              currentFileContent += line + '\n';
+            }
+          }
+        }
+        
+        // 添加最后一个文件
+        if (currentFileName || currentFileContent.trim()) {
+          // 如果没有找到任何标题，使用原始文件名
+          if (!currentFileName) {
+            currentFileName = originalFileName + '.md';
+          }
+          files.push({
+            name: currentFileName,
+            content: currentFileContent.trim()
+          });
+        }
+        
+        return files;
+      }
+      
+      // 显示拆分后的文件列表
+      function displaySplitFiles() {
+        if (!fileList) return;
+        fileList.innerHTML = '';
+        
+        splitFiles.forEach((file) => {
+          const fileItem = document.createElement('div');
+          fileItem.className = 'border border-gray-200 rounded-lg overflow-hidden transition-all hover:shadow-md';
+          
+          const fileHeader = document.createElement('div');
+          fileHeader.className = 'bg-gray-50 px-4 py-3 flex justify-between items-center cursor-pointer';
+          fileHeader.innerHTML = `
+            <div class="flex items-center">
+              <i class="fa fa-file-text-o text-primary mr-2"></i>
+              <span class="font-medium truncate max-w-[70%]">${escapeHtml(file.name)}</span>
+            </div>
+            <i class="fa fa-chevron-down text-gray-400 transition-transform duration-300"></i>
+          `;
+          
+          const fileContent = document.createElement('div');
+          fileContent.className = 'px-4 py-3 bg-white hidden';
+          fileContent.innerHTML = `
+            <pre class="text-sm bg-gray-50 p-3 rounded overflow-x-auto text-gray-800 max-h-60">${escapeHtml(file.content)}</pre>
+          `;
+          
+          // 点击展开/折叠文件内容
+          fileHeader.addEventListener('click', () => {
+            fileContent.classList.toggle('hidden');
+            const icon = fileHeader.querySelector('.fa-chevron-down');
+            if (icon) icon.classList.toggle('rotate-180');
+          });
+          
+          fileItem.appendChild(fileHeader);
+          fileItem.appendChild(fileContent);
+          fileList.appendChild(fileItem);
+        });
+      }
+      
+      // 事件监听：下载 ZIP 文件
+      if (downloadZipBtn) {
+        downloadZipBtn.addEventListener('click', () => {
+          if (splitFiles.length === 0) return;
+          
+          // 检查是否加载了JSZip
+          if (typeof JSZip === 'undefined') {
+            showNotification('依赖库加载失败，请刷新页面重试', 'error');
+            return;
+          }
+          
+          const zip = new JSZip();
+          
+          // 创建一个文件夹
+          const folder = zip.folder(originalFileName || 'split_files');
+          
+          // 添加所有文件到 ZIP
+          splitFiles.forEach(file => {
+            folder.file(file.name, file.content);
+          });
+          
+          // 生成并下载 ZIP 文件
+          zip.generateAsync({ type: 'blob' })
+            .then(content => {
+              // 检查是否加载了FileSaver
+              if (typeof saveAs === 'undefined') {
+                // 降级处理
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${originalFileName || 'split_files'}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, 0);
+              } else {
+                saveAs(content, `${originalFileName || 'split_files'}.zip`);
+              }
+              showNotification('ZIP 文件生成成功，正在下载', 'success');
+            })
+            .catch(err => {
+              console.error('生成 ZIP 失败:', err);
+              showNotification('生成 ZIP 文件失败，请重试', 'error');
+            });
+        });
+      }
+      
+      // 工具函数：转义 HTML 字符
+      function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+      
+      // 显示通知
+      function showNotification(message, type = 'info') {
+        // 创建通知元素
+        const notification = document.createElement('div');
+        notification.className = `fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-y-10 opacity-0`;
+        
+        // 设置不同类型的样式
+        if (type === 'success') {
+          notification.classList.add('bg-green-500', 'text-white');
+          notification.innerHTML = `<i class="fa fa-check-circle mr-2"></i>${escapeHtml(message)}`;
+        } else if (type === 'error') {
+          notification.classList.add('bg-red-500', 'text-white');
+          notification.innerHTML = `<i class="fa fa-exclamation-circle mr-2"></i>${escapeHtml(message)}`;
+        } else {
+          notification.classList.add('bg-blue-500', 'text-white');
+          notification.innerHTML = `<i class="fa fa-info-circle mr-2"></i>${escapeHtml(message)}`;
+        }
+        
+        // 添加到页面
+        document.body.appendChild(notification);
+        
+        // 显示通知
+        setTimeout(() => {
+          notification.classList.remove('translate-y-10', 'opacity-0');
+        }, 10);
+        
+        // 3秒后隐藏通知
+        setTimeout(() => {
+          notification.classList.add('translate-y-10', 'opacity-0');
+          setTimeout(() => {
+            try {
+              document.body.removeChild(notification);
+            } catch (e) { /* 忽略移除失败 */ }
+          }, 300);
+        }, 3000);
+      }
+    });
+  </script>
+</body>
+</html>
