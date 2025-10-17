@@ -290,7 +290,8 @@
             }
             
             // 提取新标题作为文件名（去除 # 和空格）
-            currentFileName = line.replace(headingSymbol, '').trim()
+            currentFileName = line.replace(headingSymbol, '').trim()			
+              .replace(/\s+/g, '')  // 去掉所有空格
               .replace(/[\/:*?"<>|]/g, '-') + '.md'; // 替换非法文件名字符
             currentFileContent = line + '\n';
           } else {
